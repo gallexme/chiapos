@@ -27,6 +27,9 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <future>
 
 #include "../lib/include/picosha2.hpp"
 #include "calculate_bucket.hpp"
@@ -53,12 +56,15 @@ public:
     {
         struct plot_header header{};
         this->filename = filename;
-
+        
         std::ifstream disk_file(filename, std::ios::in | std::ios::binary);
 
         if (!disk_file.is_open()) {
             throw std::invalid_argument("Invalid file " + filename);
         }
+
+        this->fd = open(filename.c_str(), O_RDONLY);
+
         // 19 bytes  - "Proof of Space Plot" (utf-8)
         // 32 bytes  - unique plot id
         // 1 byte    - k
@@ -126,7 +132,10 @@ public:
             Encoding::ANSFree(kRValues[i]);
         }
         Encoding::ANSFree(kC3R);
+        close(this->fd);
     }
+
+    int fd;
 
     void GetMemo(uint8_t* buffer) { memcpy(buffer, memo, this->memo_size); }
 
@@ -170,7 +179,7 @@ public:
                 // This inner loop goes from table 6 to table 1, getting the two backpointers,
                 // and following one of them.
                 for (uint8_t table_index = 6; table_index > 1; table_index--) {
-                    uint128_t line_point = ReadLinePoint(disk_file, table_index, position);
+                    uint128_t line_point = ReadLinePoint(this->fd, table_index, position);
 
                     auto xy = Encoding::LinePointToSquare(line_point);
                     assert(xy.first >= xy.second);
@@ -181,7 +190,7 @@ public:
                         position = xy.first;
                     }
                 }
-                uint128_t new_line_point = ReadLinePoint(disk_file, 1, position);
+                uint128_t new_line_point = ReadLinePoint(this->fd, 1, position);
                 auto x1x2 = Encoding::LinePointToSquare(new_line_point);
 
                 // The final two x values (which are stored in the same location) are hashed
@@ -218,8 +227,7 @@ public:
             }
 
             // Gets the 64 leaf x values, concatenated together into a k*64 bit string.
-            std::vector<Bits> xs = GetInputs(disk_file, p7_entries[index], 6);
-
+            std::vector<Bits> xs = GetInputs(this->fd, p7_entries[index], 6);
             // Sorts them according to proof ordering, where
             // f1(x0) m= f1(x1), f2(x0, x1) m= f2(x2, x3), etc. On disk, they are not stored in
             // proof ordering, they're stored in plot ordering, due to the sorting in the Compress
@@ -278,31 +286,36 @@ private:
     // The entry at index "position" is read. First, the park index is calculated, then
     // the park is read, and finally, entry deltas are added up to the position that we
     // are looking for.
-    uint128_t ReadLinePoint(std::ifstream& disk_file, uint8_t table_index, uint64_t position)
+    uint128_t ReadLinePoint(int fd, uint8_t table_index, uint64_t position)
     {
         uint64_t park_index = position / kEntriesPerPark;
         uint32_t park_size_bits = EntrySizes::CalculateParkSize(k, table_index) * 8;
 
-        SafeSeek(disk_file, table_begin_pointers[table_index] + (park_size_bits / 8) * park_index);
+        uint64_t line_point_pos = table_begin_pointers[table_index] + (park_size_bits / 8) * park_index;
 
         // This is the checkpoint at the beginning of the park
         uint16_t line_point_size = EntrySizes::CalculateLinePointSize(k);
-        auto* line_point_bin = new uint8_t[line_point_size + 7];
-        SafeRead(disk_file, line_point_bin, line_point_size);
-        uint128_t line_point = Util::SliceInt128FromBytes(line_point_bin, 0, k * 2);
+        uint32_t stubs_size_bits = EntrySizes::CalculateStubsSize(k) * 8;
+        uint32_t max_deltas_size_bits = EntrySizes::CalculateMaxDeltasSize(k, table_index) * 8;
+
+        // the total size needed is actually just all of these added together
+        // plus the encoded delta size (2bytes). we don't actually know the delta size,
+        // but we know its less than max_deltas_size_bits/8.
+        size_t total_size = line_point_size + (stubs_size_bits/8) + sizeof(uint16_t) + (max_deltas_size_bits/8);
+
+        uint8_t* buffer = new uint8_t[total_size];
+        if (pread(fd, buffer, total_size, line_point_pos) < 0) {
+            throw std::runtime_error("pread of " + filename + "at " + std::to_string(line_point_pos) + " size=" + std::to_string(total_size) + " failed");
+        }
+
+        uint128_t line_point = Util::SliceInt128FromBytes(buffer, 0, k * 2);
 
         // Reads EPP stubs
-        uint32_t stubs_size_bits = EntrySizes::CalculateStubsSize(k) * 8;
-        auto* stubs_bin = new uint8_t[stubs_size_bits / 8 + 7];
-        SafeRead(disk_file, stubs_bin, stubs_size_bits / 8);
+        uint8_t* stubs_bin = buffer + line_point_size;
 
         // Reads EPP deltas
-        uint32_t max_deltas_size_bits = EntrySizes::CalculateMaxDeltasSize(k, table_index) * 8;
-        auto* deltas_bin = new uint8_t[max_deltas_size_bits / 8];
-
         // Reads the size of the encoded deltas object
-        uint16_t encoded_deltas_size = 0;
-        SafeRead(disk_file, (uint8_t*)&encoded_deltas_size, sizeof(uint16_t));
+        uint16_t encoded_deltas_size = *((uint16_t*)(buffer + line_point_size + (stubs_size_bits/8)));
 
         if (encoded_deltas_size * 8 > max_deltas_size_bits) {
             throw std::invalid_argument("Invalid size for deltas: " + std::to_string(encoded_deltas_size));
@@ -314,11 +327,10 @@ private:
             // Uncompressed
             encoded_deltas_size &= 0x7fff;
             deltas.resize(encoded_deltas_size);
-            SafeRead(disk_file, deltas.data(), encoded_deltas_size);
+            memcpy(deltas.data(), buffer + line_point_size + (stubs_size_bits/8) + sizeof(uint16_t), encoded_deltas_size); 
         } else {
             // Compressed
-            SafeRead(disk_file, deltas_bin, encoded_deltas_size);
-
+            uint8_t* deltas_bin = buffer + line_point_size + (stubs_size_bits/8) + sizeof(uint16_t);
             // Decodes the deltas
             double R = kRValues[table_index - 1];
             deltas =
@@ -344,10 +356,7 @@ private:
         uint128_t big_delta = ((uint128_t)sum_deltas << stub_size) + sum_stubs;
         uint128_t final_line_point = line_point + big_delta;
 
-        delete[] line_point_bin;
-        delete[] stubs_bin;
-        delete[] deltas_bin;
-
+        delete[] buffer;
         return final_line_point;
     }
 
@@ -634,9 +643,9 @@ private:
     // all of the leaves (x values). For example, for depth=5, it fetches the position-th
     // entry in table 5, reading the two back pointers from the line point, and then
     // recursively calling GetInputs for table 4.
-    std::vector<Bits> GetInputs(std::ifstream& disk_file, uint64_t position, uint8_t depth)
+    std::vector<Bits> GetInputs(int fd, uint64_t position, uint8_t depth)
     {
-        uint128_t line_point = ReadLinePoint(disk_file, depth, position);
+        uint128_t line_point = ReadLinePoint(fd, depth, position);
         std::pair<uint64_t, uint64_t> xy = Encoding::LinePointToSquare(line_point);
 
         if (depth == 1) {
@@ -646,8 +655,10 @@ private:
             ret.emplace_back(xy.first, k);   // x
             return ret;
         } else {
-            std::vector<Bits> left = GetInputs(disk_file, xy.second, depth - 1);  // y
-            std::vector<Bits> right = GetInputs(disk_file, xy.first, depth - 1);  // x
+            auto left_future = std::async(std::launch::async, &DiskProver::GetInputs, this, fd, xy.second, depth-1);
+            auto right_future = std::async(std::launch::async, &DiskProver::GetInputs, this, fd, xy.first, depth-1);
+            std::vector<Bits> left = left_future.get();
+            std::vector<Bits> right = right_future.get();
             left.insert(left.end(), right.begin(), right.end());
             return left;
         }
