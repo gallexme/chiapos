@@ -304,7 +304,7 @@ private:
         size_t total_size = line_point_size + (stubs_size_bits/8) + sizeof(uint16_t) + (max_deltas_size_bits/8);
 
         uint8_t* buffer = new uint8_t[total_size];
-        if (pread(fd, buffer, total_size, line_point_pos) < 0) {
+        if (pread64(fd, buffer, total_size, line_point_pos) < 0) {
             throw std::runtime_error("pread of " + filename + "at " + std::to_string(line_point_pos) + " size=" + std::to_string(total_size) + " failed");
         }
 
