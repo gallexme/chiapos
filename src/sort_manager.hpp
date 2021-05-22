@@ -34,6 +34,7 @@
 #include "thread_pool.hpp"
     
 extern thread_pool pool;
+extern synced_stream sync_out;
 
 enum class strategy_t : uint8_t
 {
@@ -319,7 +320,6 @@ private:
 
     // thread pool for paralel bucket sorting
     std::future<bool> next_sort_job;
-    synced_stream sync_out;
     std::unique_ptr<uint8_t[]> next_memory_start_;
 
     void SortBucket(const uint64_t bucket_i, uint8_t* const memory_start, const uint64_t memory_size)
@@ -349,9 +349,9 @@ private:
         // (number of entries required * entry_size_) <= total memory available
         if (!force_quicksort &&
             Util::RoundSize(bucket_entries) * entry_size_ <= memory_size_) {
-            std::cout << "\tBucket " << bucket_i << " uniform sort. Ram: " << std::fixed
-                      << std::setprecision(3) << have_ram << "GiB, u_sort min: " << u_ram
-                      << "GiB, qs min: " << qs_ram << "GiB." << std::endl;
+            sync_out.println("\tBucket ", bucket_i, " uniform sort. Ram: ", std::fixed
+                      , std::setprecision(3), have_ram, "GiB, u_sort min: ", u_ram
+                      , "GiB, qs min: ", qs_ram, "GiB.");
             UniformSort::SortToMemory(
                 b.underlying_file,
                 0,
