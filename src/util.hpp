@@ -74,6 +74,9 @@ inline uint64_t bswap_64(uint64_t x) { return __builtin_bswap64(x); }
 #error "unknown compiler, don't know how to swap bytes"
 #endif
 
+#define likely(x)       __builtin_expect((x),1)
+#define unlikely(x)     __builtin_expect((x),0)
+
 /* Platform-specific cpuid include. */
 #if defined(_WIN32)
 #include <intrin.h>
