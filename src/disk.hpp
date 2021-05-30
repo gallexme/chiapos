@@ -23,9 +23,11 @@
 #include <thread>
 #include <chrono>
 #ifndef _WIN32
+#define _FILE_OFFSET_BITS  64
 #include <fcntl.h>
 #else
 #include <io.h>
+
 #endif
 // enables disk I/O logging to disk.log
 // use tools/disk.gnuplot to generate a plot
@@ -167,11 +169,11 @@ int allocate(int fd, std::string filename)
 
 
 
-        uint64_t   length = 0;
+        int64_t   length = 0;
         if (hasEnding(filename, "plot.tmp") || hasEnding(filename, "plot.2.tmp") || hasEnding(filename, "plot")) {
             // apparently there is a limit of 2 GB
             std::cout << "allocating <60GB" << std::endl;
-            length = 60 * 1000 * 1024 * 1024; // plot.tmp
+            length = 60LL * 1000LL * 1024LL * 1024LL; // plot.tmp
         }
         else if (hasEnding(filename, "plot.table1.tmp") || hasEnding(filename, "plot.table2.tmp") || hasEnding(filename, "plot.table3.tmp") || hasEnding(filename, "plot.table4.tmp") || hasEnding(filename, "plot.table5.tmp") || hasEnding(filename, "plot.table6.tmp") || hasEnding(filename, "plot.table7.tmp")) {
             std::cout << "allocating <2GB" << std::endl;
