@@ -187,7 +187,7 @@ int allocate(int fd, std::string filename)
         }
 
         int offset = 0;
-                return fallocate fallocate(fd, 0, offset, length);
+                return  fallocate64(fd, 0, offset, length);
 
 
 }
