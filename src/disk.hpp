@@ -23,7 +23,7 @@
 #include <thread>
 #include <chrono>
 #ifndef _WIN32
-#define _FILE_OFFSET_BITS  64
+    #define _FILE_OFFSET_BITS  64
 #include <fcntl.h>
 #else
 #include <io.h>
@@ -172,19 +172,19 @@ int allocate(int fd, std::string filename)
         int64_t   length = 0;
         if (hasEnding(filename, "plot.tmp") || hasEnding(filename, "plot.2.tmp") || hasEnding(filename, "plot")) {
             // apparently there is a limit of 2 GB
-            std::cout << "allocating <60GB" << std::endl;
+            
             length = 60LL * 1000LL * 1024LL * 1024LL; // plot.tmp
         }
         else if (hasEnding(filename, "plot.table1.tmp") || hasEnding(filename, "plot.table2.tmp") || hasEnding(filename, "plot.table3.tmp") || hasEnding(filename, "plot.table4.tmp") || hasEnding(filename, "plot.table5.tmp") || hasEnding(filename, "plot.table6.tmp") || hasEnding(filename, "plot.table7.tmp")) {
-            std::cout << "allocating <2GB" << std::endl;
+
             length = 2 * 1000L * 1024L * 1024L; // plot.table7.tmp
         }
         else if (hasEnding(filename, "sort.tmp")) {
-            std::cout << "allocating 400MB" << std::endl;
+
             length = 400L * 1024L * 1024L; // sort.tmp
         }
         else {
-            std::cout << "allocating 400MB" << std::endl;
+
             length = 400L * 1024L * 1024L; // sort_bucket_084.tmp
         }
 
