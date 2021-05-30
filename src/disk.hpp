@@ -173,7 +173,7 @@ int allocate(int fd, std::string filename)
         if (hasEnding(filename, "plot.tmp") || hasEnding(filename, "plot.2.tmp") || hasEnding(filename, "plot")) {
             // apparently there is a limit of 2 GB
             
-            length = 60LL * 1000LL * 1024LL * 1024LL; // plot.tmp
+            length = 20LL * 1000LL * 1024LL * 1024LL; // plot.tmp
         }
         else if (hasEnding(filename, "plot.table1.tmp") || hasEnding(filename, "plot.table2.tmp") || hasEnding(filename, "plot.table3.tmp") || hasEnding(filename, "plot.table4.tmp") || hasEnding(filename, "plot.table5.tmp") || hasEnding(filename, "plot.table6.tmp") || hasEnding(filename, "plot.table7.tmp")) {
 
