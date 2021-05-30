@@ -217,7 +217,7 @@ struct FileDisk {
              if ((flags & writeFlag) ) {
                 int fd = fileno(f_);
 
-                int r = allocate(fd,filename_string());
+                int r = allocate(fd,filename_.string());
                 if (r == -1) {
                     std::cout << "\tfallocate failed,  errno " << errno << std::endl;
                 }
