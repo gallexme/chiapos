@@ -22,7 +22,11 @@
 #include <vector>
 #include <thread>
 #include <chrono>
-
+#ifndef _WIN32
+#include <fcntl.h>
+#else
+#include <io.h>
+#endif
 // enables disk I/O logging to disk.log
 // use tools/disk.gnuplot to generate a plot
 #define ENABLE_LOGGING 0
@@ -96,7 +100,98 @@ void disk_log(fs::path const& filename, op_t const op, uint64_t offset, uint64_t
     ::close(fd);
 }
 #endif
+bool hasEnding(std::string const& fullString, std::string const& ending)
+{
+    if (fullString.length() >= ending.length()) {
+        return (0 == fullString.compare(fullString.length() - ending.length(), ending.length(), ending));
+    }
+    else {
+        return false;
+    }
+}
 
+#ifdef _WIN32
+static LARGE_INTEGER toLargeInteger(int64_t value)
+{
+    LARGE_INTEGER result;
+    result.QuadPart = value;
+
+    return result;
+}
+
+void allocate(FILE* file, std::string filename)
+{
+    HANDLE hFile = (HANDLE)_get_osfhandle(_fileno(file));
+    if (hFile != INVALID_HANDLE_VALUE) {
+        FILE_ALLOCATION_INFO fai;
+        std::cout << "filename is " << filename << std::endl;
+        if (hasEnding(filename, "plot.tmp") || hasEnding(filename, "plot.2.tmp") || hasEnding(filename, "plot")) {
+
+            std::cout << "allocating <60GB" << std::endl;
+            fai.AllocationSize = toLargeInteger(60 * 1024 * 1024 * 1024); // plot.tmp
+        }
+        else if (hasEnding(filename, "plot.table1.tmp") || hasEnding(filename, "plot.table2.tmp") || hasEnding(filename, "plot.table3.tmp") || hasEnding(filename, "plot.table4.tmp") || hasEnding(filename, "plot.table5.tmp") || hasEnding(filename, "plot.table6.tmp") || hasEnding(filename, "plot.table7.tmp")) {
+            std::cout << "allocating <2GB" << std::endl;
+            fai.AllocationSize = toLargeInteger(2 * 1000L * 1024L * 1024L); // plot.table7.tmp
+        }
+        else if (hasEnding(filename, "sort.tmp")) {
+            std::cout << "allocating 400MB" << std::endl;
+            fai.AllocationSize = toLargeInteger(400L * 1024L * 1024L); // sort.tmp
+        }
+        else {
+            std::cout << "allocating 400MB" << std::endl;
+            fai.AllocationSize = toLargeInteger(400L * 1024L * 1024L); // sort_bucket_084.tmp
+        }
+
+        BOOL fResult = SetFileInformationByHandle(hFile,
+                                                  FileAllocationInfo,
+                                                  &fai,
+                                                  sizeof(FILE_ALLOCATION_INFO));
+
+        if (fResult) {
+            std::cout << "allocation worked" << std::endl;
+        }
+        else {
+            // error code 87 appears when allocation size more than 2GB above file size. No other error appeared so far
+            std::cout << "allocation error: '" << GetLastError() << "' continuing without" << std::endl;
+        }
+    }
+    else {
+        throw std::invalid_argument("invalid file handle (_get_osfhandle _fileno failed?)");
+    }
+}
+#else
+
+int allocate(int fd, const& std::string filename)
+{
+
+
+
+        int  length = 0;
+        if (hasEnding(filename, "plot.tmp") || hasEnding(filename, "plot.2.tmp") || hasEnding(filename, "plot")) {
+            // apparently there is a limit of 2 GB
+            std::cout << "allocating <60GB" << std::endl;
+            length = 60 * 1000 * 1024 * 1024; // plot.tmp
+        }
+        else if (hasEnding(filename, "plot.table1.tmp") || hasEnding(filename, "plot.table2.tmp") || hasEnding(filename, "plot.table3.tmp") || hasEnding(filename, "plot.table4.tmp") || hasEnding(filename, "plot.table5.tmp") || hasEnding(filename, "plot.table6.tmp") || hasEnding(filename, "plot.table7.tmp")) {
+            std::cout << "allocating <2GB" << std::endl;
+            length = 2 * 1000L * 1024L * 1024L; // plot.table7.tmp
+        }
+        else if (hasEnding(filename, "sort.tmp")) {
+            std::cout << "allocating 400MB" << std::endl;
+            length = 400L * 1024L * 1024L; // sort.tmp
+        }
+        else {
+            std::cout << "allocating 400MB" << std::endl;
+            length = 400L * 1024L * 1024L; // sort_bucket_084.tmp
+        }
+
+        int offset = 0;
+                return fallocate(fd, 0, offset, length);
+
+
+}
+#endif
 struct FileDisk {
     explicit FileDisk(const fs::path &filename)
     {
@@ -113,8 +208,20 @@ struct FileDisk {
         do {
 #ifdef _WIN32
             f_ = ::_wfopen(filename_.c_str(), (flags & writeFlag) ? L"w+b" : L"r+b");
+            // allocate only windows
+            if ((flags & writeFlag)) {
+                allocate(f_, filename_.string());
+            }
 #else
             f_ = ::fopen(filename_.c_str(), (flags & writeFlag) ? "w+b" : "r+b");
+             if ((flags & writeFlag) ) {
+                int fd = fileno(f_);
+
+                int r = allocate(fd,filename);
+                if (r == -1) {
+                    std::cout << "\tfallocate failed,  errno " << errno << std::endl;
+                }
+            }
 #endif
             if (f_ == nullptr) {
                 std::string error_message =
