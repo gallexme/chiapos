@@ -162,12 +162,12 @@ void allocate(FILE* file, std::string filename)
 }
 #else
 
-int allocate(int fd, const& std::string filename)
+int allocate(int fd, std::string filename)
 {
 
 
 
-        int  length = 0;
+        uint64_t   length = 0;
         if (hasEnding(filename, "plot.tmp") || hasEnding(filename, "plot.2.tmp") || hasEnding(filename, "plot")) {
             // apparently there is a limit of 2 GB
             std::cout << "allocating <60GB" << std::endl;
@@ -187,7 +187,7 @@ int allocate(int fd, const& std::string filename)
         }
 
         int offset = 0;
-                return fallocate(fd, 0, offset, length);
+                return fallocate fallocate(fd, 0, offset, length);
 
 
 }
@@ -217,7 +217,7 @@ struct FileDisk {
              if ((flags & writeFlag) ) {
                 int fd = fileno(f_);
 
-                int r = allocate(fd,filename);
+                int r = allocate(fd,filename_string());
                 if (r == -1) {
                     std::cout << "\tfallocate failed,  errno " << errno << std::endl;
                 }
