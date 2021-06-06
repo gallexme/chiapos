@@ -27,7 +27,7 @@ using std::vector;
 using std::endl;
 using std::cout;
 
-thread_pool pool(4);
+thread_pool pool;
 synced_stream sync_out;
 
 void HexToBytes(const string &hex, uint8_t *result)
@@ -137,7 +137,7 @@ int main(int argc, char *argv[]) try {
 
         HexToBytes(memo, memo_bytes.data());
         HexToBytes(id, id_bytes.data());
-
+         pool.reset(num_threads);
         DiskPlotter plotter = DiskPlotter();
         uint8_t phases_flags = 0;
         if (!nobitfield) {

@@ -211,19 +211,10 @@ struct FileDisk {
 #ifdef _WIN32
             f_ = ::_wfopen(filename_.c_str(), (flags & writeFlag) ? L"w+b" : L"r+b");
             // allocate only windows
-            if ((flags & writeFlag)) {
-                allocate(f_, filename_.string());
-            }
+
 #else
             f_ = ::fopen(filename_.c_str(), (flags & writeFlag) ? "w+b" : "r+b");
-             if ((flags & writeFlag) ) {
-                int fd = fileno(f_);
 
-                int r = allocate(fd,filename_.string());
-                if (r == -1) {
-                    std::cout << "\tfallocate failed,  errno " << errno << std::endl;
-                }
-            }
 #endif
             if (f_ == nullptr) {
                 std::string error_message =
